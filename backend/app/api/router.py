@@ -10,6 +10,7 @@ from app.api.routes import (
     ml,
     nutrition,
     recommendations,
+    telegram,
     templates,
     training,
     whoop,
@@ -28,3 +29,4 @@ api_router.include_router(workouts.router)
 api_router.include_router(recommendations.router)
 api_router.include_router(whoop.router)
 api_router.include_router(ml.router)
+api_router.include_router(telegram.router)
