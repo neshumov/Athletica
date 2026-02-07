@@ -9,6 +9,7 @@ from app.models.workout_template import WorkoutTemplate, WorkoutTemplateExercise
 from app.schemas.template import (
     WorkoutTemplateCreate,
     WorkoutTemplateExerciseCreate,
+    WorkoutTemplateExercisesSave,
     WorkoutTemplateOut,
 )
 
@@ -73,6 +74,34 @@ def add_template_exercise(
     db.add(row)
     db.commit()
     return {"status": "ok"}
+
+
+@router.put("/workouts/templates/{template_id}/exercises")
+def save_template_exercises(
+    template_id: int, payload: WorkoutTemplateExercisesSave, db: Session = Depends(get_db)
+) -> dict:
+    template = db.query(WorkoutTemplate).filter(WorkoutTemplate.id == template_id).first()
+    if not template:
+        raise HTTPException(status_code=404, detail="Template not found")
+    db.query(WorkoutTemplateExercise).filter(
+        WorkoutTemplateExercise.workout_template_id == template_id
+    ).delete()
+    for item in payload.exercises:
+        exercise = db.query(Exercise).filter(Exercise.id == item.exercise_id).first()
+        if not exercise:
+            raise HTTPException(
+                status_code=404, detail=f"Exercise {item.exercise_id} not found"
+            )
+        db.add(
+            WorkoutTemplateExercise(
+                workout_template_id=template_id,
+                exercise_id=item.exercise_id,
+                order_index=item.order_index,
+                target_reps=item.target_reps,
+            )
+        )
+    db.commit()
+    return {"status": "saved"}
 
 
 @router.delete("/workouts/templates/{template_id}/exercises/{exercise_id}")

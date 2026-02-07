@@ -331,6 +331,31 @@ export default function App() {
     await loadTemplateExercises(templateId);
   };
 
+  const updateTemplateExerciseReps = (exerciseId: number, reps: number) => {
+    setTemplateExercises((prev) =>
+      prev.map((ex) =>
+        ex.exercise_id === exerciseId ? { ...ex, target_reps: reps } : ex
+      )
+    );
+  };
+
+  const saveTemplateExercises = async () => {
+    if (!templateId) return;
+    const payload = {
+      exercises: templateExercises.map((ex, index) => ({
+        exercise_id: ex.exercise_id,
+        order_index: index,
+        target_reps: ex.target_reps ?? null
+      }))
+    };
+    await fetch(`${API_BASE}/workouts/templates/${templateId}/exercises`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+    await loadTemplateExercises(templateId);
+  };
+
   const loadTemplateExercises = async (id: number) => {
     const res = await fetch(`${API_BASE}/workouts/templates/${id}/exercises`);
     const data = (await res.json()) as TemplateExercise[];
@@ -1018,6 +1043,12 @@ export default function App() {
                 >
                   Add To Template
                 </button>
+                <button
+                  className="rounded-lg bg-slate/50 px-4 py-2 text-sm"
+                  onClick={saveTemplateExercises}
+                >
+                  Save Template Exercises
+                </button>
                 <div className="mt-4 space-y-2 text-xs text-mist/70">
                   {templateExercises.map((ex) => (
                     <div
@@ -1029,12 +1060,25 @@ export default function App() {
                         {ex.exercise_type === "strength" ? "Strength" : "Cardio"}
                         {ex.target_reps ? ` · ${ex.target_reps} reps` : ""}
                       </span>
-                      <button
-                        className="rounded-lg bg-ember/20 px-2 py-1 text-[11px] text-ember"
-                        onClick={() => removeTemplateExercise(ex.exercise_id)}
-                      >
-                        Remove
-                      </button>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="number"
+                          className="w-20 rounded-lg bg-slate/40 px-2 py-1 text-xs"
+                          value={ex.target_reps ?? 0}
+                          onChange={(e) =>
+                            updateTemplateExerciseReps(
+                              ex.exercise_id,
+                              Number(e.target.value)
+                            )
+                          }
+                        />
+                        <button
+                          className="rounded-lg bg-ember/20 px-2 py-1 text-[11px] text-ember"
+                          onClick={() => removeTemplateExercise(ex.exercise_id)}
+                        >
+                          Remove
+                        </button>
+                      </div>
                     </div>
                   ))}
                 </div>

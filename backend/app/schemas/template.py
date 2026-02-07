@@ -16,3 +16,7 @@ class WorkoutTemplateExerciseCreate(BaseModel):
     exercise_id: int
     order_index: int = 0
     target_reps: int | None = None
+
+
+class WorkoutTemplateExercisesSave(BaseModel):
+    exercises: list[WorkoutTemplateExerciseCreate]
