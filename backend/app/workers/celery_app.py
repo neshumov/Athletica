@@ -8,6 +8,7 @@ celery_app = Celery(
     "athletica",
     broker=settings.redis_url,
     backend=settings.redis_url,
+    include=["app.workers.tasks"],
 )
 celery_app.conf.task_routes = {
     "app.workers.tasks.sync_whoop": {"queue": "whoop"},
