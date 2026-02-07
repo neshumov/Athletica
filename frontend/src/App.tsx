@@ -1163,30 +1163,39 @@ export default function App() {
                 </button>
 
                 <div className="space-y-3">
-                  {calendarExercises.map((ex, idx) => {
-                    const meta = exerciseMap.get(ex.exercise_id);
-                    const isCardio = meta?.exercise_type === "cardio";
-                    const isCollapsed = collapsedExercises.has(ex.exercise_id);
-                    return (
-                      <div
-                        key={idx}
-                        className="rounded-2xl border border-slate/60 bg-slate/40 p-3"
-                      >
-                        <div className="flex items-center justify-between">
-                          <div className="text-sm text-white">
-                            {meta?.name || `Exercise #${ex.exercise_id}`} · Set{" "}
-                            {ex.set_number}
-                          </div>
-                          <div className="flex items-center gap-2">
+                  {(() => {
+                    const grouped = new Map<
+                      number,
+                      { items: { row: CalendarExercise; idx: number }[] }
+                    >();
+                    calendarExercises.forEach((row, idx) => {
+                      const bucket = grouped.get(row.exercise_id) || { items: [] };
+                      bucket.items.push({ row, idx });
+                      grouped.set(row.exercise_id, bucket);
+                    });
+
+                    return Array.from(grouped.entries()).map(([exerciseId, group]) => {
+                      const meta = exerciseMap.get(exerciseId);
+                      const isCardio = meta?.exercise_type === "cardio";
+                      const isCollapsed = collapsedExercises.has(exerciseId);
+                      return (
+                        <div
+                          key={exerciseId}
+                          className="rounded-2xl border border-slate/60 bg-slate/40 p-3"
+                        >
+                          <div className="flex items-center justify-between">
+                            <div className="text-sm text-white">
+                              {meta?.name || `Exercise #${exerciseId}`}
+                            </div>
                             <button
                               className="rounded-lg bg-slate/50 px-2 py-1 text-[11px] text-mist"
                               onClick={() =>
                                 setCollapsedExercises((prev) => {
                                   const next = new Set(prev);
-                                  if (next.has(ex.exercise_id)) {
-                                    next.delete(ex.exercise_id);
+                                  if (next.has(exerciseId)) {
+                                    next.delete(exerciseId);
                                   } else {
-                                    next.add(ex.exercise_id);
+                                    next.add(exerciseId);
                                   }
                                   return next;
                                 })
@@ -1194,92 +1203,92 @@ export default function App() {
                             >
                               {isCollapsed ? "Show" : "Hide"}
                             </button>
-                            <button
-                              className="rounded-lg bg-ember/20 px-2 py-1 text-[11px] text-ember"
-                              onClick={() => removeCalendarExerciseRow(idx)}
-                            >
-                              Remove
-                            </button>
                           </div>
-                        </div>
-                        {!isCollapsed && (
-                          <div className="mt-3 grid gap-2 md:grid-cols-2">
-                          <div className="space-y-1">
-                            <label className="text-xs text-mist/60">Exercise</label>
-                            <input
-                              className="rounded-lg bg-slate/40 px-3 py-2"
-                              value={meta?.name || ex.exercise_id}
-                              readOnly
-                            />
-                          </div>
-                          <div className="space-y-1">
-                            <label className="text-xs text-mist/60">Set Number</label>
-                            <input
-                              type="number"
-                              className="rounded-lg bg-slate/40 px-3 py-2"
-                              value={ex.set_number}
-                              onChange={(e) => {
-                                const next = [...calendarExercises];
-                                next[idx] = {
-                                  ...next[idx],
-                                  set_number: Number(e.target.value)
-                                };
-                                setCalendarExercises(next);
-                              }}
-                            />
-                          </div>
-                          <div className="space-y-1">
-                            <label className="text-xs text-mist/60">Reps</label>
-                            <input
-                              type="number"
-                              className="rounded-lg bg-slate/40 px-3 py-2"
-                              value={ex.reps || 0}
-                              onChange={(e) => {
-                                const next = [...calendarExercises];
-                                next[idx] = { ...next[idx], reps: Number(e.target.value) };
-                                setCalendarExercises(next);
-                              }}
-                            />
-                          </div>
-                          <div className="space-y-1">
-                            <label className="text-xs text-mist/60">Weight (kg)</label>
-                            <input
-                              type="number"
-                              className="rounded-lg bg-slate/40 px-3 py-2"
-                              value={ex.weight_kg || 0}
-                              onChange={(e) => {
-                                const next = [...calendarExercises];
-                                next[idx] = {
-                                  ...next[idx],
-                                  weight_kg: Number(e.target.value)
-                                };
-                                setCalendarExercises(next);
-                              }}
-                            />
-                          </div>
-                          {isCardio && (
-                            <div className="space-y-1">
-                              <label className="text-xs text-mist/60">Duration (min)</label>
-                              <input
-                                type="number"
-                                className="rounded-lg bg-slate/40 px-3 py-2"
-                                value={ex.duration_minutes || 0}
-                                onChange={(e) => {
-                                  const next = [...calendarExercises];
-                                  next[idx] = {
-                                    ...next[idx],
-                                    duration_minutes: Number(e.target.value)
-                                  };
-                                  setCalendarExercises(next);
-                                }}
-                              />
+
+                          {!isCollapsed && (
+                            <div className="mt-3 space-y-2">
+                              {group.items.map(({ row, idx }) => (
+                                <div
+                                  key={`${exerciseId}-${row.set_number}-${idx}`}
+                                  className="rounded-xl border border-slate/60 bg-coal/60 p-3"
+                                >
+                                  <div className="flex items-center justify-between">
+                                    <span className="text-xs uppercase tracking-[0.2em] text-mist/60">
+                                      Set {row.set_number}
+                                    </span>
+                                    <button
+                                      className="rounded-lg bg-ember/20 px-2 py-1 text-[11px] text-ember"
+                                      onClick={() => removeCalendarExerciseRow(idx)}
+                                    >
+                                      Remove
+                                    </button>
+                                  </div>
+                                  <div className="mt-3 grid gap-2 md:grid-cols-2">
+                                    <div className="space-y-1">
+                                      <label className="text-xs text-mist/60">
+                                        Reps
+                                      </label>
+                                      <input
+                                        type="number"
+                                        className="rounded-lg bg-slate/40 px-3 py-2"
+                                        value={row.reps || 0}
+                                        onChange={(e) => {
+                                          const next = [...calendarExercises];
+                                          next[idx] = {
+                                            ...next[idx],
+                                            reps: Number(e.target.value)
+                                          };
+                                          setCalendarExercises(next);
+                                        }}
+                                      />
+                                    </div>
+                                    <div className="space-y-1">
+                                      <label className="text-xs text-mist/60">
+                                        Weight (kg)
+                                      </label>
+                                      <input
+                                        type="number"
+                                        className="rounded-lg bg-slate/40 px-3 py-2"
+                                        value={row.weight_kg || 0}
+                                        onChange={(e) => {
+                                          const next = [...calendarExercises];
+                                          next[idx] = {
+                                            ...next[idx],
+                                            weight_kg: Number(e.target.value)
+                                          };
+                                          setCalendarExercises(next);
+                                        }}
+                                      />
+                                    </div>
+                                    {isCardio && (
+                                      <div className="space-y-1">
+                                        <label className="text-xs text-mist/60">
+                                          Duration (min)
+                                        </label>
+                                        <input
+                                          type="number"
+                                          className="rounded-lg bg-slate/40 px-3 py-2"
+                                          value={row.duration_minutes || 0}
+                                          onChange={(e) => {
+                                            const next = [...calendarExercises];
+                                            next[idx] = {
+                                              ...next[idx],
+                                              duration_minutes: Number(e.target.value)
+                                            };
+                                            setCalendarExercises(next);
+                                          }}
+                                        />
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              ))}
                             </div>
                           )}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
+                        </div>
+                      );
+                    });
+                  })()}
                 </div>
 
                 {calendarErrors.length > 0 && (
