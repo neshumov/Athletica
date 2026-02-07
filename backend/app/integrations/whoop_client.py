@@ -25,15 +25,53 @@ class WhoopClient:
     def _headers(self) -> dict[str, str]:
         return {"Authorization": f"Bearer {self.access_token}"}
 
+    def _get_paginated(self, path: str, params: dict[str, Any]) -> list[dict[str, Any]]:
+        records: list[dict[str, Any]] = []
+        next_token: str | None = None
+        with httpx.Client(timeout=30) as client:
+            while True:
+                page_params = dict(params)
+                if next_token:
+                    page_params["nextToken"] = next_token
+                resp = client.get(
+                    f"{self.base_url}{path}", headers=self._headers(), params=page_params
+                )
+                resp.raise_for_status()
+                data = resp.json()
+                records.extend(data.get("records", []))
+                next_token = data.get("next_token")
+                if not next_token:
+                    break
+        return records
+
     def get_cycles(self, start: str | None = None, end: str | None = None) -> dict[str, Any]:
         params = {"limit": 25}
         if start:
             params["start"] = start
         if end:
             params["end"] = end
+        return {"records": self._get_paginated("/v2/cycle", params)}
+
+    def get_recoveries(self, start: str | None = None, end: str | None = None) -> dict[str, Any]:
+        params = {"limit": 25}
+        if start:
+            params["start"] = start
+        if end:
+            params["end"] = end
+        return {"records": self._get_paginated("/v2/recovery", params)}
+
+    def get_sleeps(self, start: str | None = None, end: str | None = None) -> dict[str, Any]:
+        params = {"limit": 25}
+        if start:
+            params["start"] = start
+        if end:
+            params["end"] = end
+        return {"records": self._get_paginated("/v2/activity/sleep", params)}
+
+    def get_body_measurement(self) -> dict[str, Any]:
         with httpx.Client(timeout=30) as client:
             resp = client.get(
-                f"{self.base_url}/v2/cycle", headers=self._headers(), params=params
+                f"{self.base_url}/v2/user/measurement/body", headers=self._headers()
             )
             resp.raise_for_status()
             return resp.json()
