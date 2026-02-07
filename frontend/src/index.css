@@ -1,0 +1,15 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+body {
+  font-family: "Source Sans 3", sans-serif;
+}
+
+* {
+  scrollbar-color: #252c35 #101418;
+}

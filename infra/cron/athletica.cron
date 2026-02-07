@@ -1,0 +1,3 @@
+# Athletica hourly Whoop sync (API-only)
+# Run with: crontab /etc/cron.d/athletica
+0 * * * * root curl -fsS -X POST http://127.0.0.1:8000/whoop/sync >/dev/null 2>&1

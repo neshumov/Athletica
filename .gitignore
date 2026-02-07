@@ -1,0 +1,17 @@
+.idea
+.venv
+node_modules
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+*.sqlite
+
+# Secrets (encrypted files are allowed)
+.env
+secrets*.dec.*
+secrets*.plaintext.*
+
+# Build
+frontend/dist
+backend/dist

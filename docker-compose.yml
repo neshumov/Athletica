@@ -1,0 +1,47 @@
+version: "3.9"
+
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: athletica
+      POSTGRES_USER: athletica
+      POSTGRES_PASSWORD: ${ATHLETICA_POSTGRES_PASSWORD}
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+
+  redis:
+    image: redis:7
+    ports:
+      - "6379:6379"
+
+  backend:
+    build:
+      context: ./backend
+    depends_on:
+      - db
+      - redis
+    environment:
+      ATHLETICA_DATABASE_URL: ${ATHLETICA_DATABASE_URL}
+      ATHLETICA_REDIS_URL: ${ATHLETICA_REDIS_URL}
+      ATHLETICA_WHOOP_CLIENT_ID: ${ATHLETICA_WHOOP_CLIENT_ID}
+      ATHLETICA_WHOOP_CLIENT_SECRET: ${ATHLETICA_WHOOP_CLIENT_SECRET}
+      ATHLETICA_WHOOP_REDIRECT_URL: ${ATHLETICA_WHOOP_REDIRECT_URL}
+      ATHLETICA_TELEGRAM_BOT_TOKEN: ${ATHLETICA_TELEGRAM_BOT_TOKEN}
+      ATHLETICA_TELEGRAM_CHAT_ID: ${ATHLETICA_TELEGRAM_CHAT_ID}
+      ATHLETICA_MLFLOW_TRACKING_URI: ${ATHLETICA_MLFLOW_TRACKING_URI}
+    ports:
+      - "8000:8000"
+
+  frontend:
+    build:
+      context: ./frontend
+    depends_on:
+      - backend
+    ports:
+      - "5173:5173"
+
+volumes:
+  db_data:
