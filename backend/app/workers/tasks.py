@@ -116,7 +116,15 @@ def send_daily_insight() -> dict:
     db = SessionLocal()
     try:
         today = datetime.now(timezone.utc).date()
-        whoop = db.query(WhoopDaily).order_by(WhoopDaily.date.desc()).first()
+        whoop = (
+            db.query(WhoopDaily)
+            .filter(
+                WhoopDaily.missing_flag.is_(False),
+                WhoopDaily.recovery_score.isnot(None),
+            )
+            .order_by(WhoopDaily.date.desc())
+            .first()
+        )
         goal = db.query(UserGoal).filter(UserGoal.is_active.is_(True)).first()
         rec = (
             db.query(Recommendation)
@@ -130,9 +138,16 @@ def send_daily_insight() -> dict:
         recovery = int(whoop.recovery_score) if whoop and whoop.recovery_score else None
         strain = round(whoop.strain, 1) if whoop and whoop.strain else None
         hrv = int(whoop.hrv) if whoop and whoop.hrv else None
+        resting_hr = (
+            int(whoop.resting_heart_rate)
+            if whoop and whoop.resting_heart_rate
+            else None
+        )
 
         message = "📊 Daily Insight\n\n"
         message += f"Goal Progress: {_format_goal_progress(goal)}\n"
+        if whoop:
+            message += f"Data Date: {whoop.date}\n"
         message += (
             f"Recovery Score: {recovery} / 100\n" if recovery is not None else ""
         )
@@ -142,11 +157,15 @@ def send_daily_insight() -> dict:
             message += f"Strain: {strain}\n"
         if hrv is not None:
             message += f"HRV: {hrv} ms\n"
+        if resting_hr is not None:
+            message += f"Resting HR: {resting_hr} bpm\n"
 
         if rec:
             message += "\n⚠ Recommendation:\n"
             message += f"{rec.message}\n"
             message += _format_reason(rec.explanation_json)
+        else:
+            message += "\n✅ Recommendation:\nKeep current plan today."
 
         reply_markup = None
         if rec:
