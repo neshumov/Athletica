@@ -44,16 +44,37 @@ docker-compose up --build
 
 ## Sync (API-only, no webhooks)
 
-The system uses scheduled polling (cron). For hourly sync, install the cron file:
+Whoop sync is polled via task queue:
 
-```bash
-sudo cp infra/cron/athletica.cron /etc/cron.d/athletica
+- Manual: `POST /whoop/sync`
+- Background: Celery task `sync_whoop` (typically run hourly)
+
+## Telegram Daily Insight (11:00 MSK)
+
+Daily summary is sent via Celery Beat:
+
+- Task: `app.workers.tasks.send_daily_insight`
+- Schedule: `11:00` MSK
+- Buttons: `Accept` / `Ignore` are Telegram inline buttons
+
+### Telegram Webhook
+
+Inline buttons require a webhook:
+
+```
+POST /api/telegram/webhook
 ```
 
-This triggers:
+Register webhook:
 
 ```bash
-POST /whoop/sync
+curl -s "https://api.telegram.org/bot<YOUR_TOKEN>/setWebhook?url=https://athletic.e-nesh.com/api/telegram/webhook"
+```
+
+### Test Message
+
+```bash
+curl -u USER:PASS -X POST "https://athletic.e-nesh.com/api/telegram/test?message=Athletica%20test"
 ```
 
 ## Project Structure
