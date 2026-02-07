@@ -8,7 +8,10 @@ import httpx
 from app.db.session import SessionLocal
 from app.integrations.whoop_client import WhoopClient
 from app.ml.pipeline import train_all_models
+from app.models.goal import UserGoal
+from app.models.recommendation import Recommendation, RecommendationFeedback
 from app.models.whoop import WhoopDaily
+from app.services.telegram import send_telegram_message
 from app.services.whoop_oauth import force_refresh_token, get_valid_token
 from app.workers.celery_app import celery_app
 
@@ -91,6 +94,75 @@ def sync_whoop() -> dict:
 def train_models() -> dict:
     return train_all_models()
 
+
+def _format_goal_progress(goal: UserGoal | None) -> str:
+    if not goal:
+        return "No active goal"
+    return goal.goal_type.capitalize()
+
+
+def _format_reason(explanation: dict | None) -> str:
+    if not explanation:
+        return ""
+    reasons = explanation.get("reasons") if isinstance(explanation, dict) else None
+    if not reasons:
+        return ""
+    lines = "\n".join([f"• {r}" for r in reasons[:3]])
+    return f"\nReason:\n{lines}"
+
+
+@celery_app.task
+def send_daily_insight() -> dict:
+    db = SessionLocal()
+    try:
+        today = datetime.now(timezone.utc).date()
+        whoop = db.query(WhoopDaily).order_by(WhoopDaily.date.desc()).first()
+        goal = db.query(UserGoal).filter(UserGoal.is_active.is_(True)).first()
+        rec = (
+            db.query(Recommendation)
+            .order_by(Recommendation.date.desc(), Recommendation.id.desc())
+            .first()
+        )
+
+        sleep_hours = (
+            round((whoop.sleep_duration_minutes or 0) / 60, 1) if whoop else None
+        )
+        recovery = int(whoop.recovery_score) if whoop and whoop.recovery_score else None
+        strain = round(whoop.strain, 1) if whoop and whoop.strain else None
+        hrv = int(whoop.hrv) if whoop and whoop.hrv else None
+
+        message = "📊 Daily Insight\n\n"
+        message += f"Goal Progress: {_format_goal_progress(goal)}\n"
+        message += (
+            f"Recovery Score: {recovery} / 100\n" if recovery is not None else ""
+        )
+        if sleep_hours is not None:
+            message += f"Sleep: {sleep_hours}h\n"
+        if strain is not None:
+            message += f"Strain: {strain}\n"
+        if hrv is not None:
+            message += f"HRV: {hrv} ms\n"
+
+        if rec:
+            message += "\n⚠ Recommendation:\n"
+            message += f"{rec.message}\n"
+            message += _format_reason(rec.explanation_json)
+
+        reply_markup = None
+        if rec:
+            reply_markup = {
+                "inline_keyboard": [
+                    [
+                        {"text": "👍 Accept", "callback_data": f"rec:{rec.id}:accepted"},
+                        {"text": "👎 Ignore", "callback_data": f"rec:{rec.id}:ignored"},
+                    ]
+                ]
+            }
+
+        result = send_telegram_message(message, reply_markup=reply_markup)
+        return {"status": "ok", "date": str(today), "telegram": result.get("status")}
+    finally:
+        db.close()
 
 def _ingest_whoop(db: SessionLocal, payload: dict) -> dict:
     cycles = payload["cycles"]
