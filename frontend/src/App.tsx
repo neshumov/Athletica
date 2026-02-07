@@ -22,26 +22,25 @@ type Goal = {
   is_active: boolean;
 };
 
-type Program = {
+type Exercise = {
   id: number;
   name: string;
-  is_active: boolean;
+  exercise_type: string;
+  muscle_group: string;
+  equipment: string;
 };
 
-type WorkoutExercise = {
-  exercise_name: string;
+type WorkoutTemplate = {
+  id: number;
+  name: string;
+};
+
+type CalendarExercise = {
+  exercise_id: number;
   set_number: number;
-  exercise_type: string;
-  muscle_group?: string | null;
-  equipment?: string | null;
   reps?: number | null;
   weight_kg?: number | null;
   duration_minutes?: number | null;
-};
-
-type LastResult = {
-  workout: { id?: number; date: string; workout_quality: string } | null;
-  exercises: WorkoutExercise[];
 };
 
 type NutritionEntry = {
@@ -116,11 +115,15 @@ function useApi<T>(url: string, deps: unknown[] = []) {
 
 export default function App() {
   const [tab, setTab] = useState<
-    "dashboard" | "goals" | "plans" | "workouts" | "nutrition"
+    "dashboard" | "goals" | "exercises" | "workouts" | "calendar" | "nutrition"
   >("dashboard");
   const { data: goals, setData: setGoals } = useApi<Goal[]>("/goals", [tab]);
-  const { data: programs, setData: setPrograms } = useApi<Program[]>(
-    "/programs",
+  const { data: exercises, setData: setExercises } = useApi<Exercise[]>(
+    "/exercises",
+    [tab]
+  );
+  const { data: templates, setData: setTemplates } = useApi<WorkoutTemplate[]>(
+    "/workouts/templates",
     [tab]
   );
   const { data: nutrition, setData: setNutrition } = useApi<NutritionEntry[]>(
@@ -136,56 +139,25 @@ export default function App() {
   });
   const [goalErrors, setGoalErrors] = useState<string[]>([]);
 
-  const [programName, setProgramName] = useState("");
-  const [programId, setProgramId] = useState<number | null>(null);
-  const [dayName, setDayName] = useState("");
-  const [dayId, setDayId] = useState<number | null>(null);
-  const [exerciseForm, setExerciseForm] = useState<{
-    exercise_type: string;
-    exercise_name: string;
-    muscle_group: string;
-    equipment: string;
-    target_sets: number;
-    target_reps: number;
-    target_weight_kg: number;
-    target_duration_minutes: number;
-  }>({
+  const [exerciseForm, setExerciseForm] = useState({
+    name: "",
     exercise_type: "strength",
-    exercise_name: "",
     muscle_group: MUSCLE_GROUPS[0],
-    equipment: EQUIPMENT[0],
-    target_sets: 3,
-    target_reps: 10,
-    target_weight_kg: 0,
-    target_duration_minutes: 0
+    equipment: EQUIPMENT[0]
   });
-  const [planErrors, setPlanErrors] = useState<string[]>([]);
+  const [exerciseErrors, setExerciseErrors] = useState<string[]>([]);
 
-  const [workoutForm, setWorkoutForm] = useState({
+  const [templateName, setTemplateName] = useState("");
+  const [templateId, setTemplateId] = useState<number | null>(null);
+  const [templateExerciseId, setTemplateExerciseId] = useState<string>("");
+  const [templateErrors, setTemplateErrors] = useState<string[]>([]);
+
+  const [calendarForm, setCalendarForm] = useState({
     date: "",
-    duration_minutes: 60,
-    subjective_fatigue: 5,
-    workout_quality: "ok",
-    program_day_id: ""
+    workout_template_id: ""
   });
-
-  const [workoutExercises, setWorkoutExercises] = useState<WorkoutExercise[]>([
-    {
-      exercise_name: "",
-      set_number: 1,
-      exercise_type: "strength",
-      muscle_group: MUSCLE_GROUPS[0],
-      equipment: EQUIPMENT[0],
-      reps: 10,
-      weight_kg: 0,
-      duration_minutes: 0
-    }
-  ]);
-  const [workoutErrors, setWorkoutErrors] = useState<string[]>([]);
-
-  const [lastQueryDayId, setLastQueryDayId] = useState("");
-  const [lastResult, setLastResult] = useState<LastResult | null>(null);
-  const [sortMode, setSortMode] = useState<"name" | "type" | "muscle">("name");
+  const [calendarExercises, setCalendarExercises] = useState<CalendarExercise[]>([]);
+  const [calendarErrors, setCalendarErrors] = useState<string[]>([]);
 
   const [nutritionForm, setNutritionForm] = useState({
     date: "",
@@ -225,113 +197,81 @@ export default function App() {
     setGoals((goals || []).map((g) => ({ ...g, is_active: false })).concat(data));
   };
 
-  const submitProgram = async () => {
-    const errors: string[] = [];
-    if (!programName.trim()) errors.push("Program name is required.");
-    setPlanErrors(errors);
-    if (errors.length > 0) return;
-
-    const res = await fetch(`${API_BASE}/programs`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: programName })
-    });
-    const data = await res.json();
-    setPrograms((programs || []).concat(data));
-  };
-
-  const submitDay = async () => {
-    const errors: string[] = [];
-    if (!programId) errors.push("Select a program first.");
-    if (!dayName.trim()) errors.push("Day name is required.");
-    setPlanErrors(errors);
-    if (errors.length > 0 || !programId) return;
-
-    await fetch(`${API_BASE}/programs/${programId}/days`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ day_name: dayName })
-    });
-  };
-
   const submitExercise = async () => {
     const errors: string[] = [];
-    if (!dayId) errors.push("Program day id is required.");
-    if (!exerciseForm.exercise_name.trim()) errors.push("Exercise name is required.");
-    if (exerciseForm.exercise_type === "cardio" && exerciseForm.target_duration_minutes <= 0) {
-      errors.push("Cardio requires duration minutes.");
-    }
-    if (exerciseForm.exercise_type === "strength" && exerciseForm.target_sets <= 0) {
-      errors.push("Strength requires target sets.");
-    }
-    setPlanErrors(errors);
-    if (errors.length > 0 || !dayId) return;
+    if (!exerciseForm.name.trim()) errors.push("Exercise name is required.");
+    setExerciseErrors(errors);
+    if (errors.length > 0) return;
 
-    await fetch(`${API_BASE}/program-days/${dayId}/exercises`, {
+    const res = await fetch(`${API_BASE}/exercises`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(exerciseForm)
+    });
+    const data = (await res.json()) as Exercise;
+    setExercises((exercises || []).concat(data));
+  };
+
+  const submitTemplate = async () => {
+    const errors: string[] = [];
+    if (!templateName.trim()) errors.push("Template name is required.");
+    setTemplateErrors(errors);
+    if (errors.length > 0) return;
+
+    const res = await fetch(`${API_BASE}/workouts/templates`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: templateName })
+    });
+    const data = (await res.json()) as WorkoutTemplate;
+    setTemplates((templates || []).concat(data));
+    setTemplateId(data.id);
+  };
+
+  const addTemplateExercise = async () => {
+    const errors: string[] = [];
+    if (!templateId) errors.push("Select a template first.");
+    if (!templateExerciseId) errors.push("Select an exercise.");
+    setTemplateErrors(errors);
+    if (errors.length > 0 || !templateId) return;
+
+    await fetch(`${API_BASE}/workouts/templates/${templateId}/exercises`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ exercise_id: Number(templateExerciseId), order_index: 0 })
+    });
+  };
+
+  const addCalendarExerciseRow = () => {
+    if (!templateExerciseId) return;
+    setCalendarExercises((prev) =>
+      prev.concat({
+        exercise_id: Number(templateExerciseId),
+        set_number: 1,
+        reps: 10,
+        weight_kg: 0,
+        duration_minutes: 0
+      })
+    );
+  };
+
+  const submitCalendar = async () => {
+    const errors: string[] = [];
+    if (!calendarForm.date) errors.push("Date is required.");
+    if (!calendarForm.workout_template_id) errors.push("Select a workout template.");
+    if (calendarExercises.length === 0) errors.push("Add at least one exercise row.");
+    setCalendarErrors(errors);
+    if (errors.length > 0) return;
+
+    await fetch(`${API_BASE}/calendar`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        ...exerciseForm,
-        target_weight_kg:
-          exerciseForm.exercise_type === "cardio" ? null : exerciseForm.target_weight_kg,
-        target_duration_minutes:
-          exerciseForm.exercise_type === "cardio"
-            ? exerciseForm.target_duration_minutes
-            : null
+        date: calendarForm.date,
+        workout_template_id: Number(calendarForm.workout_template_id),
+        exercises: calendarExercises
       })
     });
-  };
-
-  const submitWorkout = async () => {
-    const errors: string[] = [];
-    if (!workoutForm.date) errors.push("Workout date is required.");
-    if (workoutForm.duration_minutes <= 0) errors.push("Duration must be positive.");
-    if (workoutExercises.some((ex) => !ex.exercise_name.trim())) {
-      errors.push("Every exercise row needs a name.");
-    }
-    if (
-      workoutExercises.some(
-        (ex) => ex.exercise_type === "cardio" && (!ex.duration_minutes || ex.duration_minutes <= 0)
-      )
-    ) {
-      errors.push("Cardio rows require duration minutes.");
-    }
-    setWorkoutErrors(errors);
-    if (errors.length > 0) return;
-
-    const payload = {
-      ...workoutForm,
-      program_day_id: workoutForm.program_day_id
-        ? Number(workoutForm.program_day_id)
-        : null,
-      exercises: workoutExercises.map((ex) => ({
-        ...ex,
-        reps: ex.exercise_type === "cardio" ? 0 : ex.reps,
-        weight_kg: ex.exercise_type === "cardio" ? 0 : ex.weight_kg
-      }))
-    };
-    await fetch(`${API_BASE}/workouts`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload)
-    });
-  };
-
-  const fetchLast = async () => {
-    if (!lastQueryDayId) return;
-    const res = await fetch(
-      `${API_BASE}/workouts/last?program_day_id=${lastQueryDayId}`
-    );
-    const data = (await res.json()) as LastResult;
-    setLastResult(data);
-  };
-
-  const deleteLastWorkout = async () => {
-    if (!lastResult?.workout?.id) return;
-    await fetch(`${API_BASE}/workouts/${lastResult.workout.id}`, {
-      method: "DELETE"
-    });
-    setLastResult(null);
   };
 
   const submitNutrition = async () => {
@@ -352,17 +292,6 @@ export default function App() {
     const data = (await res.json()) as NutritionEntry;
     setNutrition((nutrition || []).filter((n) => n.date !== data.date).concat(data));
   };
-
-  const sortedExercises = useMemo(() => {
-    if (!lastResult?.exercises) return [];
-    const list = [...lastResult.exercises];
-    list.sort((a, b) => {
-      if (sortMode === "type") return a.exercise_type.localeCompare(b.exercise_type);
-      if (sortMode === "muscle") return (a.muscle_group || "").localeCompare(b.muscle_group || "");
-      return a.exercise_name.localeCompare(b.exercise_name);
-    });
-    return list;
-  }, [lastResult, sortMode]);
 
   return (
     <div className="min-h-screen bg-ink text-mist">
@@ -389,7 +318,14 @@ export default function App() {
 
       <main className="mx-auto max-w-6xl px-6 py-10">
         <div className="mb-8 flex flex-wrap gap-4">
-          {["dashboard", "goals", "plans", "workouts", "nutrition"].map((item) => (
+          {[
+            "dashboard",
+            "goals",
+            "exercises",
+            "workouts",
+            "calendar",
+            "nutrition"
+          ].map((item) => (
             <button
               key={item}
               onClick={() => setTab(item as typeof tab)}
@@ -672,351 +608,248 @@ export default function App() {
           </section>
         )}
 
-        {tab === "plans" && (
+        {tab === "exercises" && (
           <section className="grid gap-6 md:grid-cols-2">
             <div className="rounded-3xl border border-slate/60 bg-coal/70 p-6">
-              <h2 className="font-display text-xl text-white">Programs</h2>
+              <h2 className="font-display text-xl text-white">Exercise Library</h2>
               <div className="mt-4 space-y-3">
                 <div className="space-y-1">
-                  <label className="text-xs text-mist/60">Program Name</label>
+                  <label className="text-xs text-mist/60">Name</label>
                   <input
                     className="w-full rounded-lg bg-slate/40 px-3 py-2"
-                    placeholder="Program name"
-                    value={programName}
-                    onChange={(e) => setProgramName(e.target.value)}
+                    placeholder="Exercise name"
+                    value={exerciseForm.name}
+                    onChange={(e) =>
+                      setExerciseForm((s) => ({ ...s, name: e.target.value }))
+                    }
                   />
                 </div>
-                <button
-                  className="rounded-lg bg-ember px-4 py-2 text-sm text-ink"
-                  onClick={submitProgram}
-                >
-                  Create Program
-                </button>
-                {planErrors.length > 0 && (
+                <div className="space-y-1">
+                  <label className="text-xs text-mist/60">Type</label>
+                  <select
+                    className="w-full rounded-lg bg-slate/40 px-3 py-2"
+                    value={exerciseForm.exercise_type}
+                    onChange={(e) =>
+                      setExerciseForm((s) => ({ ...s, exercise_type: e.target.value }))
+                    }
+                  >
+                    {EXERCISE_TYPES.map((t) => (
+                      <option key={t} value={t}>
+                        {t}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs text-mist/60">Muscle Group</label>
+                  <select
+                    className="w-full rounded-lg bg-slate/40 px-3 py-2"
+                    value={exerciseForm.muscle_group}
+                    onChange={(e) =>
+                      setExerciseForm((s) => ({ ...s, muscle_group: e.target.value }))
+                    }
+                  >
+                    {MUSCLE_GROUPS.map((m) => (
+                      <option key={m} value={m}>
+                        {m}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs text-mist/60">Equipment</label>
+                  <select
+                    className="w-full rounded-lg bg-slate/40 px-3 py-2"
+                    value={exerciseForm.equipment}
+                    onChange={(e) =>
+                      setExerciseForm((s) => ({ ...s, equipment: e.target.value }))
+                    }
+                  >
+                    {EQUIPMENT.map((eq) => (
+                      <option key={eq} value={eq}>
+                        {eq}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                {exerciseErrors.length > 0 && (
                   <div className="rounded-xl bg-ember/10 px-3 py-2 text-xs text-ember">
-                    {planErrors.join(" ")}
+                    {exerciseErrors.join(" ")}
                   </div>
                 )}
-                <div className="text-sm text-mist/70">Programs:</div>
-                {(programs || []).map((p) => (
-                  <button
-                    key={p.id}
-                    className={`w-full rounded-lg px-3 py-2 text-left ${
-                      programId === p.id ? "bg-ember/20" : "bg-slate/40"
-                    }`}
-                    onClick={() => setProgramId(p.id)}
-                  >
-                    {p.name}
-                  </button>
-                ))}
+                <button
+                  className="rounded-lg bg-ember px-4 py-2 text-sm text-ink"
+                  onClick={submitExercise}
+                >
+                  Add Exercise
+                </button>
               </div>
             </div>
 
             <div className="rounded-3xl border border-slate/60 bg-coal/70 p-6">
-              <h2 className="font-display text-xl text-white">Days & Exercises</h2>
-              <div className="mt-4 space-y-3">
-                <div className="space-y-1">
-                  <label className="text-xs text-mist/60">Day Name</label>
-                  <input
-                    className="w-full rounded-lg bg-slate/40 px-3 py-2"
-                    placeholder="Day name (e.g. Monday)"
-                    value={dayName}
-                    onChange={(e) => setDayName(e.target.value)}
-                  />
-                </div>
-                <button
-                  className="rounded-lg bg-ember px-4 py-2 text-sm text-ink"
-                  onClick={submitDay}
-                >
-                  Add Day
-                </button>
-                <div className="space-y-1">
-                  <label className="text-xs text-mist/60">Program Day Id</label>
-                  <input
-                    className="w-full rounded-lg bg-slate/40 px-3 py-2"
-                    placeholder="Program day id"
-                    value={dayId || ""}
-                    onChange={(e) => setDayId(Number(e.target.value))}
-                  />
-                </div>
-                <div className="grid gap-2 text-sm">
-                  <div className="space-y-1">
-                    <label className="text-xs text-mist/60">Type</label>
-                    <select
-                      className="rounded-lg bg-slate/40 px-3 py-2"
-                      value={exerciseForm.exercise_type}
-                      onChange={(e) =>
-                        setExerciseForm((s) => ({ ...s, exercise_type: e.target.value }))
-                      }
-                    >
-                      {EXERCISE_TYPES.map((t) => (
-                        <option key={t} value={t}>
-                          {t}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-xs text-mist/60">Exercise Name</label>
-                    <input
-                      className="rounded-lg bg-slate/40 px-3 py-2"
-                      placeholder="Exercise name"
-                      value={exerciseForm.exercise_name}
-                      onChange={(e) =>
-                        setExerciseForm((s) => ({ ...s, exercise_name: e.target.value }))
-                      }
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-xs text-mist/60">Muscle Group</label>
-                    <select
-                      className="rounded-lg bg-slate/40 px-3 py-2"
-                      value={exerciseForm.muscle_group}
-                      onChange={(e) =>
-                        setExerciseForm((s) => ({ ...s, muscle_group: e.target.value }))
-                      }
-                    >
-                      {MUSCLE_GROUPS.map((m) => (
-                        <option key={m} value={m}>
-                          {m}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-xs text-mist/60">Equipment</label>
-                    <select
-                      className="rounded-lg bg-slate/40 px-3 py-2"
-                      value={exerciseForm.equipment}
-                      onChange={(e) =>
-                        setExerciseForm((s) => ({ ...s, equipment: e.target.value }))
-                      }
-                    >
-                      {EQUIPMENT.map((e) => (
-                        <option key={e} value={e}>
-                          {e}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-xs text-mist/60">Target Sets</label>
-                    <input
-                      type="number"
-                      className="rounded-lg bg-slate/40 px-3 py-2"
-                      placeholder="Target sets"
-                      value={exerciseForm.target_sets}
-                      onChange={(e) =>
-                        setExerciseForm((s) => ({ ...s, target_sets: Number(e.target.value) }))
-                      }
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-xs text-mist/60">Target Reps</label>
-                    <input
-                      type="number"
-                      className="rounded-lg bg-slate/40 px-3 py-2"
-                      placeholder="Target reps"
-                      value={exerciseForm.target_reps}
-                      onChange={(e) =>
-                        setExerciseForm((s) => ({ ...s, target_reps: Number(e.target.value) }))
-                      }
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-xs text-mist/60">Target Weight (kg)</label>
-                    <input
-                      type="number"
-                      className="rounded-lg bg-slate/40 px-3 py-2"
-                      placeholder="Target weight kg"
-                      value={exerciseForm.target_weight_kg}
-                      onChange={(e) =>
-                        setExerciseForm((s) => ({ ...s, target_weight_kg: Number(e.target.value) }))
-                      }
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-xs text-mist/60">Target Duration (min)</label>
-                    <input
-                      type="number"
-                      className="rounded-lg bg-slate/40 px-3 py-2"
-                      placeholder="Target duration minutes (cardio)"
-                      value={exerciseForm.target_duration_minutes}
-                      onChange={(e) =>
-                        setExerciseForm((s) => ({
-                          ...s,
-                          target_duration_minutes: Number(e.target.value)
-                        }))
-                      }
-                    />
-                  </div>
-                  <button
-                    className="rounded-lg bg-ember px-4 py-2 text-sm text-ink"
-                    onClick={submitExercise}
+              <h2 className="font-display text-xl text-white">All Exercises</h2>
+              <div className="mt-4 space-y-3 text-sm">
+                {(exercises || []).map((ex) => (
+                  <div
+                    key={ex.id}
+                    className="rounded-2xl border border-slate/60 bg-slate/40 px-4 py-3"
                   >
-                    Add Exercise
-                  </button>
-                </div>
+                    <p className="text-white">{ex.name}</p>
+                    <p className="text-mist/70">
+                      {ex.exercise_type} · {ex.muscle_group} · {ex.equipment}
+                    </p>
+                  </div>
+                ))}
               </div>
             </div>
           </section>
         )}
 
         {tab === "workouts" && (
-          <section className="grid gap-6">
+          <section className="grid gap-6 md:grid-cols-2">
             <div className="rounded-3xl border border-slate/60 bg-coal/70 p-6">
-              <h2 className="font-display text-xl text-white">Log Workout</h2>
-              <div className="mt-4 grid gap-3 md:grid-cols-3">
+              <h2 className="font-display text-xl text-white">Workout Templates</h2>
+              <div className="mt-4 space-y-3">
+                <div className="space-y-1">
+                  <label className="text-xs text-mist/60">Template Name</label>
+                  <input
+                    className="w-full rounded-lg bg-slate/40 px-3 py-2"
+                    placeholder="Workout template name"
+                    value={templateName}
+                    onChange={(e) => setTemplateName(e.target.value)}
+                  />
+                </div>
+                <button
+                  className="rounded-lg bg-ember px-4 py-2 text-sm text-ink"
+                  onClick={submitTemplate}
+                >
+                  Create Template
+                </button>
+                {templateErrors.length > 0 && (
+                  <div className="rounded-xl bg-ember/10 px-3 py-2 text-xs text-ember">
+                    {templateErrors.join(" ")}
+                  </div>
+                )}
+                <div className="text-sm text-mist/70">Templates:</div>
+                {(templates || []).map((t) => (
+                  <button
+                    key={t.id}
+                    className={`w-full rounded-lg px-3 py-2 text-left ${
+                      templateId === t.id ? "bg-ember/20" : "bg-slate/40"
+                    }`}
+                    onClick={() => setTemplateId(t.id)}
+                  >
+                    {t.name}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="rounded-3xl border border-slate/60 bg-coal/70 p-6">
+              <h2 className="font-display text-xl text-white">Template Exercises</h2>
+              <div className="mt-4 space-y-3">
+                <div className="space-y-1">
+                  <label className="text-xs text-mist/60">Exercise</label>
+                  <select
+                    className="w-full rounded-lg bg-slate/40 px-3 py-2"
+                    value={templateExerciseId}
+                    onChange={(e) => setTemplateExerciseId(e.target.value)}
+                  >
+                    <option value="">Select exercise</option>
+                    {(exercises || []).map((ex) => (
+                      <option key={ex.id} value={ex.id}>
+                        {ex.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <button
+                  className="rounded-lg bg-ember px-4 py-2 text-sm text-ink"
+                  onClick={addTemplateExercise}
+                >
+                  Add To Template
+                </button>
+              </div>
+            </div>
+          </section>
+        )}
+
+        {tab === "calendar" && (
+          <section className="grid gap-6 md:grid-cols-2">
+            <div className="rounded-3xl border border-slate/60 bg-coal/70 p-6">
+              <h2 className="font-display text-xl text-white">Schedule Workout</h2>
+              <div className="mt-4 space-y-3">
                 <div className="space-y-1">
                   <label className="text-xs text-mist/60">Date</label>
                   <input
                     type="date"
-                    className="rounded-lg bg-slate/40 px-3 py-2"
-                    value={workoutForm.date}
+                    className="w-full rounded-lg bg-slate/40 px-3 py-2"
+                    value={calendarForm.date}
                     onChange={(e) =>
-                      setWorkoutForm((s) => ({ ...s, date: e.target.value }))
+                      setCalendarForm((s) => ({ ...s, date: e.target.value }))
                     }
                   />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-xs text-mist/60">Duration (min)</label>
-                  <input
-                    type="number"
-                    className="rounded-lg bg-slate/40 px-3 py-2"
-                    placeholder="Duration minutes"
-                    value={workoutForm.duration_minutes}
+                  <label className="text-xs text-mist/60">Workout Template</label>
+                  <select
+                    className="w-full rounded-lg bg-slate/40 px-3 py-2"
+                    value={calendarForm.workout_template_id}
                     onChange={(e) =>
-                      setWorkoutForm((s) => ({ ...s, duration_minutes: Number(e.target.value) }))
+                      setCalendarForm((s) => ({ ...s, workout_template_id: e.target.value }))
                     }
-                  />
+                  >
+                    <option value="">Select template</option>
+                    {(templates || []).map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {t.name}
+                      </option>
+                    ))}
+                  </select>
                 </div>
                 <div className="space-y-1">
-                  <label className="text-xs text-mist/60">Fatigue (1-10)</label>
-                  <input
-                    type="number"
-                    className="rounded-lg bg-slate/40 px-3 py-2"
-                    placeholder="Fatigue 1-10"
-                    value={workoutForm.subjective_fatigue}
-                    onChange={(e) =>
-                      setWorkoutForm((s) => ({ ...s, subjective_fatigue: Number(e.target.value) }))
-                    }
-                  />
+                  <label className="text-xs text-mist/60">Add Exercise Row</label>
+                  <select
+                    className="w-full rounded-lg bg-slate/40 px-3 py-2"
+                    value={templateExerciseId}
+                    onChange={(e) => setTemplateExerciseId(e.target.value)}
+                  >
+                    <option value="">Select exercise</option>
+                    {(exercises || []).map((ex) => (
+                      <option key={ex.id} value={ex.id}>
+                        {ex.name}
+                      </option>
+                    ))}
+                  </select>
                 </div>
-                <div className="space-y-1">
-                  <label className="text-xs text-mist/60">Workout Quality</label>
-                  <input
-                    className="rounded-lg bg-slate/40 px-3 py-2"
-                    placeholder="Quality: bad | ok | great"
-                    value={workoutForm.workout_quality}
-                    onChange={(e) =>
-                      setWorkoutForm((s) => ({ ...s, workout_quality: e.target.value }))
-                    }
-                  />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-xs text-mist/60">Program Day Id</label>
-                  <input
-                    className="rounded-lg bg-slate/40 px-3 py-2"
-                    placeholder="Program day id"
-                    value={workoutForm.program_day_id}
-                    onChange={(e) =>
-                      setWorkoutForm((s) => ({ ...s, program_day_id: e.target.value }))
-                    }
-                  />
-                </div>
-              </div>
-              {workoutErrors.length > 0 && (
-                <div className="mt-4 rounded-xl bg-ember/10 px-3 py-2 text-xs text-ember">
-                  {workoutErrors.join(" ")}
-                </div>
-              )}
+                <button
+                  className="rounded-lg bg-slate/50 px-4 py-2 text-sm"
+                  onClick={addCalendarExerciseRow}
+                >
+                  Add Exercise Row
+                </button>
 
-              <div className="mt-6 space-y-4">
-                {workoutExercises.map((ex, idx) => (
-                  <div key={idx} className="rounded-2xl border border-slate/60 bg-slate/40 p-4">
-                    <div className="flex items-center justify-between">
-                      <p className="text-sm text-mist/70">Exercise {idx + 1}</p>
-                      <span className="text-xs text-ember">{ex.exercise_type}</span>
-                    </div>
-                    <div className="mt-3 grid gap-3 md:grid-cols-2">
+                <div className="space-y-3">
+                  {calendarExercises.map((ex, idx) => (
+                    <div key={idx} className="grid gap-2 md:grid-cols-2">
                       <div className="space-y-1">
-                        <label className="text-xs text-mist/60">Exercise</label>
+                        <label className="text-xs text-mist/60">Exercise Id</label>
                         <input
-                          className="w-full rounded-lg bg-ink/40 px-3 py-2"
-                          placeholder="Exercise"
-                          value={ex.exercise_name}
-                          onChange={(e) => {
-                            const next = [...workoutExercises];
-                            next[idx] = { ...next[idx], exercise_name: e.target.value };
-                            setWorkoutExercises(next);
-                          }}
+                          className="rounded-lg bg-slate/40 px-3 py-2"
+                          value={ex.exercise_id}
+                          readOnly
                         />
                       </div>
                       <div className="space-y-1">
-                        <label className="text-xs text-mist/60">Type</label>
-                        <select
-                          className="w-full rounded-lg bg-ink/40 px-3 py-2"
-                          value={ex.exercise_type}
-                          onChange={(e) => {
-                            const next = [...workoutExercises];
-                            next[idx] = { ...next[idx], exercise_type: e.target.value };
-                            setWorkoutExercises(next);
-                          }}
-                        >
-                          {EXERCISE_TYPES.map((t) => (
-                            <option key={t} value={t}>
-                              {t}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                      <div className="space-y-1">
-                        <label className="text-xs text-mist/60">Muscle</label>
-                        <select
-                          className="w-full rounded-lg bg-ink/40 px-3 py-2"
-                          value={ex.muscle_group || ""}
-                          onChange={(e) => {
-                            const next = [...workoutExercises];
-                            next[idx] = { ...next[idx], muscle_group: e.target.value };
-                            setWorkoutExercises(next);
-                          }}
-                        >
-                          {MUSCLE_GROUPS.map((m) => (
-                            <option key={m} value={m}>
-                              {m}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                      <div className="space-y-1">
-                        <label className="text-xs text-mist/60">Equipment</label>
-                        <select
-                          className="w-full rounded-lg bg-ink/40 px-3 py-2"
-                          value={ex.equipment || ""}
-                          onChange={(e) => {
-                            const next = [...workoutExercises];
-                            next[idx] = { ...next[idx], equipment: e.target.value };
-                            setWorkoutExercises(next);
-                          }}
-                        >
-                          {EQUIPMENT.map((eq) => (
-                            <option key={eq} value={eq}>
-                              {eq}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                      <div className="space-y-1">
-                        <label className="text-xs text-mist/60">Sets</label>
+                        <label className="text-xs text-mist/60">Set Number</label>
                         <input
                           type="number"
-                          className="w-full rounded-lg bg-ink/40 px-3 py-2"
-                          placeholder="Sets"
+                          className="rounded-lg bg-slate/40 px-3 py-2"
                           value={ex.set_number}
                           onChange={(e) => {
-                            const next = [...workoutExercises];
+                            const next = [...calendarExercises];
                             next[idx] = { ...next[idx], set_number: Number(e.target.value) };
-                            setWorkoutExercises(next);
+                            setCalendarExercises(next);
                           }}
                         />
                       </div>
@@ -1024,13 +857,12 @@ export default function App() {
                         <label className="text-xs text-mist/60">Reps</label>
                         <input
                           type="number"
-                          className="w-full rounded-lg bg-ink/40 px-3 py-2"
-                          placeholder="Reps"
+                          className="rounded-lg bg-slate/40 px-3 py-2"
                           value={ex.reps || 0}
                           onChange={(e) => {
-                            const next = [...workoutExercises];
+                            const next = [...calendarExercises];
                             next[idx] = { ...next[idx], reps: Number(e.target.value) };
-                            setWorkoutExercises(next);
+                            setCalendarExercises(next);
                           }}
                         />
                       </div>
@@ -1038,13 +870,12 @@ export default function App() {
                         <label className="text-xs text-mist/60">Weight (kg)</label>
                         <input
                           type="number"
-                          className="w-full rounded-lg bg-ink/40 px-3 py-2"
-                          placeholder="Weight kg"
+                          className="rounded-lg bg-slate/40 px-3 py-2"
                           value={ex.weight_kg || 0}
                           onChange={(e) => {
-                            const next = [...workoutExercises];
+                            const next = [...calendarExercises];
                             next[idx] = { ...next[idx], weight_kg: Number(e.target.value) };
-                            setWorkoutExercises(next);
+                            setCalendarExercises(next);
                           }}
                         />
                       </div>
@@ -1052,129 +883,31 @@ export default function App() {
                         <label className="text-xs text-mist/60">Duration (min)</label>
                         <input
                           type="number"
-                          className="w-full rounded-lg bg-ink/40 px-3 py-2"
-                          placeholder="Duration min (cardio)"
+                          className="rounded-lg bg-slate/40 px-3 py-2"
                           value={ex.duration_minutes || 0}
                           onChange={(e) => {
-                            const next = [...workoutExercises];
+                            const next = [...calendarExercises];
                             next[idx] = { ...next[idx], duration_minutes: Number(e.target.value) };
-                            setWorkoutExercises(next);
+                            setCalendarExercises(next);
                           }}
                         />
                       </div>
                     </div>
-                  </div>
-                ))}
-                <button
-                  className="rounded-lg bg-slate/50 px-4 py-2 text-sm"
-                  onClick={() =>
-                    setWorkoutExercises((prev) =>
-                      prev.concat({
-                        exercise_name: "",
-                        set_number: 1,
-                        exercise_type: "strength",
-                        muscle_group: MUSCLE_GROUPS[0],
-                        equipment: EQUIPMENT[0],
-                        reps: 10,
-                        weight_kg: 0,
-                        duration_minutes: 0
-                      })
-                    )
-                  }
-                >
-                  Add Exercise Row
-                </button>
-                <button
-                  className="rounded-lg bg-ember px-4 py-2 text-sm text-ink"
-                  onClick={submitWorkout}
-                >
-                  Save Workout
-                </button>
-              </div>
-            </div>
+                  ))}
+                </div>
 
-            <div className="rounded-3xl border border-slate/60 bg-coal/70 p-6">
-              <div className="flex items-center justify-between">
-                <h2 className="font-display text-xl text-white">
-                  Last Results For Program Day
-                </h2>
-                <div className="flex items-center gap-2 text-xs text-mist/70">
-                  Sort:
-                  <select
-                    className="rounded-md bg-slate/40 px-2 py-1"
-                    value={sortMode}
-                    onChange={(e) => setSortMode(e.target.value as typeof sortMode)}
-                  >
-                    <option value="name">Name</option>
-                    <option value="type">Type</option>
-                    <option value="muscle">Muscle</option>
-                  </select>
-                </div>
-              </div>
-              <div className="mt-4 flex flex-wrap gap-3">
-                <div className="space-y-1">
-                  <label className="text-xs text-mist/60">Program Day Id</label>
-                  <input
-                    className="rounded-lg bg-slate/40 px-3 py-2"
-                    placeholder="Program day id"
-                    value={lastQueryDayId}
-                    onChange={(e) => setLastQueryDayId(e.target.value)}
-                  />
-                </div>
-                <button
-                  className="rounded-lg bg-ember px-4 py-2 text-sm text-ink"
-                  onClick={fetchLast}
-                >
-                  Load
-                </button>
-                {lastResult?.workout?.id && (
-                  <button
-                    className="rounded-lg bg-ember/20 px-4 py-2 text-sm text-ember"
-                    onClick={deleteLastWorkout}
-                  >
-                    Delete Workout
-                  </button>
+                {calendarErrors.length > 0 && (
+                  <div className="rounded-xl bg-ember/10 px-3 py-2 text-xs text-ember">
+                    {calendarErrors.join(" ")}
+                  </div>
                 )}
+                <button
+                  className="rounded-lg bg-ember px-4 py-2 text-sm text-ink"
+                  onClick={submitCalendar}
+                >
+                  Save Day
+                </button>
               </div>
-
-              {lastResult?.workout ? (
-                <div className="mt-6">
-                  <div className="flex flex-wrap items-center gap-4 text-sm text-mist/70">
-                    <span>
-                      Date: <strong className="text-white">{lastResult.workout.date}</strong>
-                    </span>
-                    <span>
-                      Quality: <strong className="text-white">{lastResult.workout.workout_quality}</strong>
-                    </span>
-                  </div>
-                  <div className="mt-4 grid gap-3 md:grid-cols-2">
-                    {sortedExercises.map((ex, idx) => (
-                      <div key={idx} className="rounded-2xl border border-slate/60 bg-slate/40 p-4">
-                        <div className="flex items-center justify-between">
-                          <p className="text-white">{ex.exercise_name}</p>
-                          <span className="text-xs text-ember">{ex.exercise_type}</span>
-                        </div>
-                        <p className="mt-1 text-xs text-mist/70">
-                          {ex.muscle_group || "no muscle group"} · {ex.equipment || "no equipment"}
-                        </p>
-                        <div className="mt-3 flex flex-wrap gap-3 text-xs text-mist/80">
-                          <span>Set: {ex.set_number}</span>
-                          {ex.exercise_type === "cardio" ? (
-                            <span>Duration: {ex.duration_minutes} min</span>
-                          ) : (
-                            <>
-                              <span>Reps: {ex.reps}</span>
-                              <span>Weight: {ex.weight_kg} kg</span>
-                            </>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ) : (
-                <p className="mt-6 text-sm text-mist/60">No data loaded yet.</p>
-              )}
             </div>
           </section>
         )}
