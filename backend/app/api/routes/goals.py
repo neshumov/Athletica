@@ -32,6 +32,30 @@ def create_goal(payload: GoalCreate, db: Session = Depends(get_db)) -> GoalOut:
     return GoalOut.model_validate(goal.__dict__)
 
 
+@router.put("/goals/{goal_id}", response_model=GoalOut)
+def update_goal(goal_id: int, payload: GoalCreate, db: Session = Depends(get_db)) -> GoalOut:
+    goal = db.query(UserGoal).filter(UserGoal.id == goal_id).first()
+    if not goal:
+        raise HTTPException(status_code=404, detail="Goal not found")
+    goal.goal_type = payload.goal_type
+    goal.start_date = payload.start_date
+    goal.end_date = payload.end_date
+    goal.priority_muscle_groups = payload.priority_muscle_groups
+    db.commit()
+    db.refresh(goal)
+    return GoalOut.model_validate(goal.__dict__)
+
+
+@router.delete("/goals/{goal_id}")
+def delete_goal(goal_id: int, db: Session = Depends(get_db)) -> dict:
+    goal = db.query(UserGoal).filter(UserGoal.id == goal_id).first()
+    if not goal:
+        raise HTTPException(status_code=404, detail="Goal not found")
+    db.delete(goal)
+    db.commit()
+    return {"status": "deleted"}
+
+
 @router.post("/goals/{goal_id}/activate")
 def activate_goal(goal_id: int, db: Session = Depends(get_db)) -> dict:
     goal = db.query(UserGoal).filter(UserGoal.id == goal_id).first()

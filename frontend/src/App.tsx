@@ -12,6 +12,7 @@ import {
 import { EQUIPMENT, EXERCISE_TYPES, MUSCLE_GROUPS } from "./constants";
 
 const API_BASE = "/api";
+const GOAL_TYPES = ["bulk", "cut", "maintain"] as const;
 
 type Goal = {
   id: number;
@@ -141,12 +142,12 @@ export default function App() {
     "/workouts/templates",
     [tab]
   );
-  const { data: nutrition, setData: setNutrition } = useApi<NutritionEntry[]>(
-    "/nutrition",
-    [tab]
-  );
   const { data: calendarItems, setData: setCalendarItems } = useApi<CalendarItem[]>(
     "/calendar",
+    [tab]
+  );
+  const { data: nutrition, setData: setNutrition } = useApi<NutritionEntry[]>(
+    "/nutrition",
     [tab]
   );
 
@@ -154,9 +155,10 @@ export default function App() {
     goal_type: "bulk",
     start_date: "",
     end_date: "",
-    priority_muscle_groups: ""
+    priority_muscle_groups: [] as string[]
   });
   const [goalErrors, setGoalErrors] = useState<string[]>([]);
+  const [editingGoalId, setEditingGoalId] = useState<number | null>(null);
 
   const [exerciseForm, setExerciseForm] = useState<{
     name: string;
@@ -196,6 +198,18 @@ export default function App() {
 
   const activeGoal = useMemo(() => goals?.find((g) => g.is_active), [goals]);
 
+  const togglePriority = (muscle: string) => {
+    setGoalForm((s) => {
+      const exists = s.priority_muscle_groups.includes(muscle);
+      return {
+        ...s,
+        priority_muscle_groups: exists
+          ? s.priority_muscle_groups.filter((m) => m !== muscle)
+          : s.priority_muscle_groups.concat(muscle)
+      };
+    });
+  };
+
   const submitGoal = async () => {
     const errors: string[] = [];
     if (!goalForm.goal_type.trim()) errors.push("Goal type is required.");
@@ -210,17 +224,38 @@ export default function App() {
       goal_type: goalForm.goal_type,
       start_date: goalForm.start_date,
       end_date: goalForm.end_date || null,
-      priority_muscle_groups: goalForm.priority_muscle_groups
-        ? goalForm.priority_muscle_groups.split(",").map((s) => s.trim())
+      priority_muscle_groups: goalForm.priority_muscle_groups.length
+        ? goalForm.priority_muscle_groups
         : null
     };
-    const res = await fetch(`${API_BASE}/goals`, {
-      method: "POST",
+    const url = editingGoalId ? `${API_BASE}/goals/${editingGoalId}` : `${API_BASE}/goals`;
+    const res = await fetch(url, {
+      method: editingGoalId ? "PUT" : "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload)
     });
     const data = await res.json();
-    setGoals((goals || []).map((g) => ({ ...g, is_active: false })).concat(data));
+    if (editingGoalId) {
+      setGoals((goals || []).map((g) => (g.id === data.id ? data : g)));
+    } else {
+      setGoals((goals || []).map((g) => ({ ...g, is_active: false })).concat(data));
+    }
+    setEditingGoalId(null);
+  };
+
+  const editGoal = (g: Goal) => {
+    setEditingGoalId(g.id);
+    setGoalForm({
+      goal_type: g.goal_type,
+      start_date: g.start_date,
+      end_date: g.end_date || "",
+      priority_muscle_groups: g.priority_muscle_groups || []
+    });
+  };
+
+  const deleteGoal = async (id: number) => {
+    await fetch(`${API_BASE}/goals/${id}`, { method: "DELETE" });
+    setGoals((goals || []).filter((g) => g.id !== id));
   };
 
   const submitExercise = async () => {
@@ -283,6 +318,19 @@ export default function App() {
     );
   };
 
+  const addCalendarExerciseRow = () => {
+    if (!templateExerciseId) return;
+    setCalendarExercises((prev) =>
+      prev.concat({
+        exercise_id: Number(templateExerciseId),
+        set_number: 1,
+        reps: 10,
+        weight_kg: 0,
+        duration_minutes: 0
+      })
+    );
+  };
+
   const submitCalendar = async () => {
     const errors: string[] = [];
     if (!calendarForm.date) errors.push("Date is required.");
@@ -296,7 +344,6 @@ export default function App() {
       workout_template_id: Number(calendarForm.workout_template_id),
       exercises: calendarExercises
     };
-
     if (calendarEditId) {
       await fetch(`${API_BASE}/calendar/${calendarEditId}`, {
         method: "PUT",
@@ -581,14 +628,19 @@ export default function App() {
               <div className="mt-4 space-y-3">
                 <div className="space-y-1">
                   <label className="text-xs text-mist/60">Goal Type</label>
-                  <input
+                  <select
                     className="w-full rounded-lg bg-slate/40 px-3 py-2"
-                    placeholder="bulk | cut | maintain"
                     value={goalForm.goal_type}
                     onChange={(e) =>
                       setGoalForm((s) => ({ ...s, goal_type: e.target.value }))
                     }
-                  />
+                  >
+                    {GOAL_TYPES.map((t) => (
+                      <option key={t} value={t}>
+                        {t}
+                      </option>
+                    ))}
+                  </select>
                 </div>
                 <div className="space-y-1">
                   <label className="text-xs text-mist/60">Start Date</label>
@@ -614,14 +666,22 @@ export default function App() {
                 </div>
                 <div className="space-y-1">
                   <label className="text-xs text-mist/60">Priority Muscles</label>
-                  <input
-                    className="w-full rounded-lg bg-slate/40 px-3 py-2"
-                    placeholder="priority muscles (comma separated)"
-                    value={goalForm.priority_muscle_groups}
-                    onChange={(e) =>
-                      setGoalForm((s) => ({ ...s, priority_muscle_groups: e.target.value }))
-                    }
-                  />
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    {MUSCLE_GROUPS.map((m) => (
+                      <button
+                        type="button"
+                        key={m}
+                        onClick={() => togglePriority(m)}
+                        className={`rounded-lg px-3 py-2 text-left ${
+                          goalForm.priority_muscle_groups.includes(m)
+                            ? "bg-ember/20 text-ember"
+                            : "bg-slate/40 text-mist"
+                        }`}
+                      >
+                        {m}
+                      </button>
+                    ))}
+                  </div>
                 </div>
                 {goalErrors.length > 0 && (
                   <div className="rounded-xl bg-ember/10 px-3 py-2 text-xs text-ember">
@@ -632,7 +692,7 @@ export default function App() {
                   className="rounded-lg bg-ember px-4 py-2 text-sm text-ink"
                   onClick={submitGoal}
                 >
-                  Save Goal
+                  {editingGoalId ? "Update Goal" : "Save Goal"}
                 </button>
               </div>
             </div>
@@ -655,6 +715,20 @@ export default function App() {
                     <p className="text-xs text-ember">
                       {g.is_active ? "active" : "inactive"}
                     </p>
+                    <div className="mt-3 flex gap-2">
+                      <button
+                        className="rounded-lg bg-slate/50 px-3 py-1 text-xs"
+                        onClick={() => editGoal(g)}
+                      >
+                        Edit
+                      </button>
+                      <button
+                        className="rounded-lg bg-ember/20 px-3 py-1 text-xs text-ember"
+                        onClick={() => deleteGoal(g.id)}
+                      >
+                        Delete
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -863,9 +937,14 @@ export default function App() {
                     className="w-full rounded-lg bg-slate/40 px-3 py-2"
                     value={calendarForm.workout_template_id}
                     onChange={(e) => {
-                      setCalendarForm((s) => ({ ...s, workout_template_id: e.target.value }));
+                      setCalendarForm((s) => ({
+                        ...s,
+                        workout_template_id: e.target.value
+                      }));
                       const id = Number(e.target.value);
-                      if (id) loadTemplateExercises(id);
+                      if (id) {
+                        loadTemplateExercises(id);
+                      }
                     }}
                   >
                     <option value="">Select template</option>
@@ -876,6 +955,28 @@ export default function App() {
                     ))}
                   </select>
                 </div>
+                <div className="space-y-1">
+                  <label className="text-xs text-mist/60">Add Exercise Row</label>
+                  <select
+                    className="w-full rounded-lg bg-slate/40 px-3 py-2"
+                    value={templateExerciseId}
+                    onChange={(e) => setTemplateExerciseId(e.target.value)}
+                  >
+                    <option value="">Select exercise</option>
+                    {(exercises || []).map((ex) => (
+                      <option key={ex.id} value={ex.id}>
+                        {ex.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <button
+                  className="rounded-lg bg-slate/50 px-4 py-2 text-sm"
+                  onClick={addCalendarExerciseRow}
+                >
+                  Add Exercise Row
+                </button>
+
                 <div className="space-y-3">
                   {calendarExercises.map((ex, idx) => (
                     <div key={idx} className="grid gap-2 md:grid-cols-2">
@@ -956,7 +1057,6 @@ export default function App() {
                 </button>
               </div>
             </div>
-
             <div className="rounded-3xl border border-slate/60 bg-coal/70 p-6">
               <h2 className="font-display text-xl text-white">Scheduled</h2>
               <div className="mt-4 space-y-3 text-sm">
