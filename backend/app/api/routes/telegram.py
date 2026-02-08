@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.db.session import get_db
 import re
-from datetime import datetime
+from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from app.models.nutrition import NutritionDaily
@@ -34,14 +34,22 @@ async def telegram_webhook(request: Request, db: Session = Depends(get_db)) -> d
             return {"status": "ignored"}
 
         text = message.get("text") or ""
+        target_day = datetime.now(ZoneInfo("Europe/Moscow")).date() - timedelta(days=1)
+        date_match = re.search(r"(\d{4}-\d{2}-\d{2})", text)
+        if date_match:
+            try:
+                target_day = datetime.fromisoformat(date_match.group(1)).date()
+            except ValueError:
+                pass
         numbers = [int(n) for n in re.findall(r"\d+", text)]
         if len(numbers) < 4:
             return {"status": "ignored"}
         calories, protein, fat, carbs = numbers[:4]
-        today = datetime.now(ZoneInfo("Europe/Moscow")).date()
-        row = db.query(NutritionDaily).filter(NutritionDaily.date == today).first()
+        row = (
+            db.query(NutritionDaily).filter(NutritionDaily.date == target_day).first()
+        )
         if not row:
-            row = NutritionDaily(date=today)
+            row = NutritionDaily(date=target_day)
             db.add(row)
         row.calories = calories
         row.protein_g = protein
@@ -49,6 +57,7 @@ async def telegram_webhook(request: Request, db: Session = Depends(get_db)) -> d
         row.carbs_g = carbs
         db.commit()
 
+        send_telegram_message(f"Nutrition saved ✅ for {target_day}")
         # After nutrition input, send the daily insight message.
         send_daily_insight.delay()
         return {"status": "ok"}

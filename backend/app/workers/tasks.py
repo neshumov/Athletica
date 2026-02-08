@@ -118,10 +118,13 @@ def _calc_nutrition_note(
 ) -> tuple[str, str]:
     row = db.query(NutritionDaily).filter(NutritionDaily.date == day).first()
     if not row:
-        return "Nutrition: not logged today.", "Nutrition Recommendation:\nLog your intake today."
+        return (
+            f"Nutrition ({day}): not logged.",
+            "Nutrition Recommendation:\nLog your intake for the previous day.",
+        )
 
     summary = (
-        f"Nutrition: {row.calories} kcal · "
+        f"Nutrition ({day}): {row.calories} kcal · "
         f"P {row.protein_g}g · F {row.fat_g}g · C {row.carbs_g}g"
     )
     recs = []
@@ -144,14 +147,15 @@ def _calc_nutrition_note(
 @celery_app.task
 def send_nutrition_prompt() -> dict:
     today = datetime.now(ZoneInfo("Europe/Moscow")).date()
+    target_day = today - timedelta(days=1)
     message = (
         "🍽 Nutrition Log\n\n"
-        "Send your daily macros as:\n"
+        f"Send your macros for {target_day} as:\n"
         "`calories protein fat carbs`\n"
         "Example: `2200 160 70 240`"
     )
     send_telegram_message(message)
-    return {"status": "ok", "date": str(today)}
+    return {"status": "ok", "date": str(target_day)}
 
 
 @celery_app.task
@@ -221,8 +225,9 @@ def send_daily_insight() -> dict:
         else:
             message += "\n✅ Recommendation:\nKeep current plan today."
 
+        nutrition_day = today - timedelta(days=1)
         nutrition_summary, nutrition_rec = _calc_nutrition_note(
-            db, today, whoop.body_weight_kg if whoop else None
+            db, nutrition_day, whoop.body_weight_kg if whoop else None
         )
         message += f"\n\n🍽 {nutrition_summary}\n{nutrition_rec}"
 
