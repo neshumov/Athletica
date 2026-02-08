@@ -724,7 +724,12 @@ export default function App() {
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart data={nutritionTrend}>
                     <XAxis dataKey="day" stroke="#6b7280" />
-                    <YAxis stroke="#6b7280" />
+                    <YAxis yAxisId="macros" stroke="#6b7280" />
+                    <YAxis
+                      yAxisId="calories"
+                      orientation="right"
+                      stroke="#6b7280"
+                    />
                     <Tooltip
                       contentStyle={{
                         background: "#101418",
@@ -735,6 +740,7 @@ export default function App() {
                     <Line
                       type="monotone"
                       dataKey="calories"
+                      yAxisId="calories"
                       stroke="#ff5c35"
                       strokeWidth={3}
                       dot={{ r: 3, stroke: "#ff5c35" }}
@@ -742,6 +748,7 @@ export default function App() {
                     <Line
                       type="monotone"
                       dataKey="protein"
+                      yAxisId="macros"
                       stroke="#c2f970"
                       strokeWidth={2}
                       dot={false}
@@ -749,6 +756,7 @@ export default function App() {
                     <Line
                       type="monotone"
                       dataKey="carbs"
+                      yAxisId="macros"
                       stroke="#4ad0ff"
                       strokeWidth={2}
                       dot={false}
@@ -756,6 +764,7 @@ export default function App() {
                     <Line
                       type="monotone"
                       dataKey="fat"
+                      yAxisId="macros"
                       stroke="#f7b267"
                       strokeWidth={2}
                       dot={false}
